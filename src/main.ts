@@ -1,27 +1,46 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import helmet from 'helmet';
+import { ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Configurar CORS para permitir requests del frontend
-  const allowedOrigins = [
-    'https://qualityblinds.netlify.app',
-    'https://www.qualityblinds.com.au',
-    'http://localhost:3000',
-    process.env.FRONTEND_URL,
-  ].filter(Boolean);
+  // Security middleware
+  app.use(
+    helmet({
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
 
+  // Global validation pipe
+  app.useGlobalPipes(
+    new ValidationPipe({
+      transform: true,
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    }),
+  );
+
+  // Enable CORS
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
   app.enableCors({
-    origin: allowedOrigins,
+    origin: [
+      frontendUrl,
+      'https://www.qualityblinds.com.au',
+      'http://localhost:3000',
+      frontendUrl, // Add it again to ensure it's included
+    ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
   });
 
   const port = process.env.PORT || 3001;
-  await app.listen(port);
   console.log(`Backend running on port ${port}`);
-  console.log(`CORS enabled for origins: ${allowedOrigins.join(', ')}`);
+  console.log(
+    `CORS enabled for origins: ${frontendUrl}, https://www.qualityblinds.com.au, http://localhost:3000, ${frontendUrl}`,
+  );
+  await app.listen(port);
 }
 bootstrap();

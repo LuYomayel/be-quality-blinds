@@ -1,3 +1,4 @@
+import 'cross-fetch/polyfill';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
@@ -91,10 +92,10 @@ export class EmailService {
 
       // Simple configuration for Resend
       this.emailConfig = {
-        //from: this.configService.get<string>('EMAIL_FROM'),
-        from: 'Quality Blinds <info@qualityblinds.com.au>',
-        //to: this.configService.get<string>('EMAIL_TO'),
-        to: 'l.yomayel@gmail.com',
+        from: this.configService.get<string>('EMAIL_FROM'),
+        //from: 'Quality Blinds <no-reply@qualityblinds.com.au>',
+        to: this.configService.get<string>('EMAIL_TO'),
+        //to: 'l.yomayel@gmail.com',
       };
       this.logger.log('Using Resend email service');
 
