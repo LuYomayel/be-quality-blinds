@@ -8,6 +8,9 @@ import {
   HttpException,
   HttpStatus,
   Logger,
+  BadRequestException,
+  InternalServerErrorException,
+  Ip,
 } from '@nestjs/common';
 import { Request } from 'express';
 import { QuotesService } from './quotes.service';
@@ -27,33 +30,40 @@ export class QuotesController {
 
   @Post()
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
-  async submitQuote(@Body() quoteDto: QuoteDto, @Req() req: Request) {
+  async submitQuote(
+    @Body() quoteDto: QuoteDto,
+    @Req() req: Request,
+    @Ip() ip?: string,
+  ) {
+    const startTime = Date.now();
+    const requestId = `quote-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    this.logger.log(`[${requestId}] 🔄 Quote request started`);
+    this.logger.log(
+      `[${requestId}] 📧 Name: ${quoteDto.name}, Product: ${quoteDto.product}, Budget: ${quoteDto.budget}`,
+    );
+    this.logger.log(
+      `[${requestId}] 🏠 Location: ${quoteDto.city}, ${quoteDto.state} ${quoteDto.postcode}`,
+    );
+    this.logger.log(`[${requestId}] 🌐 IP: ${ip || 'unknown'}`);
+
     try {
-      const clientIP = this.getClientIP(req);
-
-      this.logger.log(`Quote request from IP: ${clientIP}`);
-
       // Verificar spam y rate limiting
+      const spamCheckStart = Date.now();
       const spamCheck = await this.antiSpamService.checkForSpam(
         quoteDto,
-        clientIP,
+        ip || 'unknown',
+      );
+      const spamCheckTime = Date.now() - spamCheckStart;
+      this.logger.log(
+        `[${requestId}] 🛡️  Spam check completed in ${spamCheckTime}ms - Result: ${spamCheck.isSpam ? '❌ SPAM' : '✅ CLEAN'}`,
       );
 
       if (spamCheck.isSpam) {
-        this.logger.warn(`Spam detected in quote request:`, {
-          ip: clientIP,
-          score: spamCheck.score,
-          reasons: spamCheck.reasons,
-        });
-
-        throw new HttpException(
-          {
-            error:
-              'Your request has been flagged as suspicious. Please try again later or contact us directly.',
-            code: 'SPAM_DETECTED',
-          },
-          HttpStatus.TOO_MANY_REQUESTS,
+        this.logger.warn(
+          `[${requestId}] 🚫 Quote request blocked as spam - Score: ${spamCheck.score}`,
         );
+        throw new BadRequestException('Request blocked by spam filter');
       }
 
       // Verificar reCAPTCHA si está presente
@@ -62,12 +72,8 @@ export class QuotesController {
           quoteDto.recaptchaToken,
         );
         if (!recaptchaValid) {
-          throw new HttpException(
-            {
-              error: 'reCAPTCHA verification failed. Please try again.',
-              code: 'RECAPTCHA_FAILED',
-            },
-            HttpStatus.BAD_REQUEST,
+          throw new BadRequestException(
+            'reCAPTCHA verification failed. Please try again.',
           );
         }
       }
@@ -76,43 +82,62 @@ export class QuotesController {
       await this.quotesService.processQuoteRequest(quoteDto);
 
       // Enviar email
-      const emailSent = await this.emailService.sendFormEmail({
-        type: 'quote',
+      const emailDataStart = Date.now();
+      const emailData = {
+        type: 'quote' as const,
         data: quoteDto,
-      });
-
-      if (!emailSent) {
-        this.logger.error('Failed to send quote request email');
-        // No fallar la request por error de email, pero logear
-      }
+      };
+      const emailDataTime = Date.now() - emailDataStart;
+      this.logger.debug(
+        `[${requestId}] 📝 Email data prepared in ${emailDataTime}ms`,
+      );
 
       this.logger.log(
-        `Quote request processed successfully for ${quoteDto.email}`,
+        `[${requestId}] 📨 Sending quote email via EmailService...`,
+      );
+      const emailStart = Date.now();
+      const success = await this.emailService.sendFormEmail(emailData);
+      const emailTime = Date.now() - emailStart;
+      const totalTime = Date.now() - startTime;
+
+      if (success) {
+        this.logger.log(
+          `[${requestId}] ✅ Quote request processed successfully!`,
+        );
+        this.logger.log(
+          `[${requestId}] 📊 Performance: SpamCheck=${spamCheckTime}ms, Email=${emailTime}ms, Total=${totalTime}ms`,
+        );
+        return {
+          success: true,
+          message:
+            'Quote request submitted successfully. We will contact you within 24 hours.',
+          data: {
+            leadScore: spamCheck.score > 0 ? 100 - spamCheck.score : 95, // Invertir spam score para lead score
+            estimatedValue: this.getBudgetValue(quoteDto.budget),
+            priority: this.getLeadPriority(quoteDto),
+          },
+        };
+      } else {
+        this.logger.error(
+          `[${requestId}] ❌ Email sending failed after ${emailTime}ms`,
+        );
+        throw new InternalServerErrorException(
+          'Failed to send quote request email',
+        );
+      }
+    } catch (error) {
+      const totalTime = Date.now() - startTime;
+      this.logger.error(
+        `[${requestId}] 💥 Quote request processing failed after ${totalTime}ms`,
+      );
+      this.logger.error(
+        `[${requestId}] 🔥 Error: ${error instanceof Error ? error.message : String(error)}`,
       );
 
-      return {
-        success: true,
-        message:
-          'Quote request submitted successfully. We will contact you within 24 hours.',
-        data: {
-          leadScore: spamCheck.score > 0 ? 100 - spamCheck.score : 95, // Invertir spam score para lead score
-          estimatedValue: this.getBudgetValue(quoteDto.budget),
-          priority: this.getLeadPriority(quoteDto),
-        },
-      };
-    } catch (error) {
-      if (error instanceof HttpException) {
+      if (error instanceof BadRequestException) {
         throw error;
       }
-
-      this.logger.error('Error processing quote request:', error);
-      throw new HttpException(
-        {
-          error: 'Failed to process quote request',
-          code: 'INTERNAL_ERROR',
-        },
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw new InternalServerErrorException('Failed to process quote request');
     }
   }
 

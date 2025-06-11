@@ -148,16 +148,49 @@ export class EmailService {
   }
 
   async sendFormEmail(emailData: EmailData): Promise<boolean> {
+    const startTime = Date.now();
+    const operationId = `email-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    this.logger.log(
+      `[${operationId}] 🔄 Starting email send process - Type: ${emailData.type}`,
+    );
+
     try {
+      // Log configuration status
+      this.logger.log(
+        `[${operationId}] 📧 Email config - Host: ${this.emailConfig.host}:${this.emailConfig.port}, Secure: ${this.emailConfig.secure}`,
+      );
+      this.logger.log(
+        `[${operationId}] 👤 Auth user: ${this.emailConfig.user ? '✅ SET' : '❌ MISSING'}`,
+      );
+      this.logger.log(
+        `[${operationId}] 🔑 Auth pass: ${this.emailConfig.pass ? '✅ SET' : '❌ MISSING'}`,
+      );
+      this.logger.log(
+        `[${operationId}] 📤 From: ${this.emailConfig.from || 'MISSING'}`,
+      );
+      this.logger.log(
+        `[${operationId}] 📥 To: ${this.emailConfig.to || 'MISSING'}`,
+      );
+
       // Validate email data
+      const validationStart = Date.now();
       this.validateEmailData(emailData);
+      this.logger.debug(
+        `[${operationId}] ✅ Validation completed in ${Date.now() - validationStart}ms`,
+      );
 
       if (!this.emailConfig.from || !this.emailConfig.to) {
         throw new Error('Email configuration not properly initialized');
       }
 
+      // Generate content
+      const contentStart = Date.now();
       const { subject, html, attachments } =
         this.generateEmailContent(emailData);
+      this.logger.debug(
+        `[${operationId}] 📝 Content generated in ${Date.now() - contentStart}ms`,
+      );
 
       const mailOptions = {
         from: this.emailConfig.from,
@@ -168,24 +201,59 @@ export class EmailService {
       };
 
       // Verify transporter connection before sending
+      this.logger.log(`[${operationId}] 🔌 Testing SMTP connection...`);
+      const connectionStart = Date.now();
       await this.verifyConnection();
-
-      const result = await this.transporter.sendMail(mailOptions);
+      const connectionTime = Date.now() - connectionStart;
       this.logger.log(
-        `Email sent successfully: ${result.messageId} - Type: ${emailData.type}`,
+        `[${operationId}] ✅ SMTP connection verified in ${connectionTime}ms`,
       );
+
+      // Send email
+      this.logger.log(`[${operationId}] 📨 Sending email...`);
+      const sendStart = Date.now();
+      const result = await this.transporter.sendMail(mailOptions);
+      const sendTime = Date.now() - sendStart;
+      const totalTime = Date.now() - startTime;
+
+      this.logger.log(`[${operationId}] ✅ Email sent successfully!`);
+      this.logger.log(
+        `[${operationId}] 📊 Performance: Connection=${connectionTime}ms, Send=${sendTime}ms, Total=${totalTime}ms`,
+      );
+      this.logger.log(`[${operationId}] 🆔 Message ID: ${result.messageId}`);
+      this.logger.log(`[${operationId}] 📧 Subject: ${subject}`);
+
       return true;
     } catch (error) {
+      const totalTime = Date.now() - startTime;
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      this.logger.error('Failed to send email:', errorMessage);
+
+      this.logger.error(
+        `[${operationId}] ❌ Email send failed after ${totalTime}ms`,
+      );
+      this.logger.error(`[${operationId}] 💥 Error: ${errorMessage}`);
 
       // Log additional error details for debugging
-      if (error && typeof error === 'object' && 'code' in error) {
-        this.logger.error(`Error code: ${error.code}`);
-      }
-      if (error && typeof error === 'object' && 'response' in error) {
-        this.logger.error(`SMTP response: ${error.response}`);
+      if (error && typeof error === 'object') {
+        const err = error;
+        if ('code' in err && err.code) {
+          this.logger.error(`[${operationId}] 🔢 Error code: ${err.code}`);
+        }
+        if ('response' in err && err.response) {
+          this.logger.error(
+            `[${operationId}] 📡 SMTP response: ${err.response}`,
+          );
+        }
+        if ('command' in err && err.command) {
+          this.logger.error(`[${operationId}] 💻 SMTP command: ${err.command}`);
+        }
+        if ('errno' in err && err.errno) {
+          this.logger.error(`[${operationId}] 🔢 System errno: ${err.errno}`);
+        }
+        if ('syscall' in err && err.syscall) {
+          this.logger.error(`[${operationId}] ⚙️ System call: ${err.syscall}`);
+        }
       }
 
       return false;
@@ -193,14 +261,46 @@ export class EmailService {
   }
 
   private async verifyConnection(): Promise<void> {
+    const startTime = Date.now();
+    this.logger.debug('🔌 Starting SMTP connection verification...');
+
     try {
-      await this.transporter.verify();
-      this.logger.debug('SMTP connection verified successfully');
+      const result = await this.transporter.verify();
+      const verifyTime = Date.now() - startTime;
+      this.logger.debug(
+        `✅ SMTP connection verified successfully in ${verifyTime}ms`,
+      );
+      this.logger.debug(`🔗 Connection result: ${JSON.stringify(result)}`);
     } catch (error) {
+      const verifyTime = Date.now() - startTime;
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      this.logger.error('SMTP connection verification failed:', errorMessage);
-      throw new Error(`SMTP connection failed: ${errorMessage}`);
+      this.logger.error(
+        `❌ SMTP connection verification failed after ${verifyTime}ms`,
+      );
+      this.logger.error(`💥 Verification error: ${errorMessage}`);
+
+      // Enhanced error logging for connection issues
+      if (error && typeof error === 'object') {
+        const err = error;
+        if ('code' in err && err.code) {
+          this.logger.error(`🔢 Connection error code: ${err.code}`);
+        }
+        if ('errno' in err && err.errno) {
+          this.logger.error(`🔢 System errno: ${err.errno}`);
+        }
+        if ('syscall' in err && err.syscall) {
+          this.logger.error(`⚙️ System call: ${err.syscall}`);
+        }
+        if ('hostname' in err && err.hostname) {
+          this.logger.error(`🌐 Hostname: ${err.hostname}`);
+        }
+        if ('port' in err && err.port) {
+          this.logger.error(`🔌 Port: ${err.port}`);
+        }
+      }
+
+      throw error;
     }
   }
 
