@@ -44,7 +44,13 @@ export class ContactController {
     try {
       const clientIP = this.getClientIP(req);
 
-      this.logger.log(`Contact form submission from IP: ${clientIP}`);
+      // Logging detallado para debug
+      this.logger.log(`=== CONTACT FORM DEBUG ===`);
+      this.logger.log(`IP: ${clientIP}`);
+      this.logger.log(`Raw body received:`, JSON.stringify(req.body, null, 2));
+      this.logger.log(`Parsed DTO:`, JSON.stringify(contactDto, null, 2));
+      this.logger.log(`Files:`, files?.length || 0);
+      this.logger.log(`=========================`);
 
       // Verificar spam y rate limiting
       const spamCheck = await this.antiSpamService.checkForSpam(
