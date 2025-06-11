@@ -26,15 +26,22 @@ let EmailService = EmailService_1 = class EmailService {
     }
     initializeConfig() {
         try {
+            this.logger.log('🔍 Checking email environment variables...');
+            this.logger.log(`EMAIL_HOST: ${this.configService.get('EMAIL_HOST') || 'MISSING'}`);
+            this.logger.log(`EMAIL_USER: ${this.configService.get('EMAIL_USER') || 'MISSING'}`);
+            this.logger.log(`EMAIL_PASS: ${this.configService.get('EMAIL_PASS') || 'MISSING'}`);
+            this.logger.log(`EMAIL_FROM: ${this.configService.get('EMAIL_FROM') || 'MISSING'}`);
+            this.logger.log(`EMAIL_TO: ${this.configService.get('EMAIL_TO') || 'MISSING'}`);
             this.emailConfig = {
                 host: this.configService.get('EMAIL_HOST', 'smtp.gmail.com'),
-                port: this.configService.get('EMAIL_PORT', 587),
-                secure: this.configService.get('EMAIL_SECURE', false),
+                port: 587,
+                secure: false,
                 user: this.configService.get('EMAIL_USER'),
                 pass: this.configService.get('EMAIL_PASS'),
                 from: this.configService.get('EMAIL_FROM'),
                 to: this.configService.get('EMAIL_TO'),
             };
+            this.logger.log('Using Gmail configuration matching PM2 variables');
             if (!this.emailConfig.user || !this.emailConfig.pass) {
                 throw new Error('Email credentials (EMAIL_USER, EMAIL_PASS) are required');
             }
@@ -56,14 +63,10 @@ let EmailService = EmailService_1 = class EmailService {
             }
             this.transporter = nodemailer.createTransport({
                 host: this.emailConfig.host,
-                port: this.emailConfig.port,
-                secure: this.emailConfig.secure,
+                secure: false,
                 auth: {
                     user: this.emailConfig.user,
                     pass: this.emailConfig.pass,
-                },
-                tls: {
-                    rejectUnauthorized: false,
                 },
             });
             this.logger.log('Email transporter initialized successfully');
@@ -75,12 +78,24 @@ let EmailService = EmailService_1 = class EmailService {
         }
     }
     async sendFormEmail(emailData) {
+        const startTime = Date.now();
+        const operationId = `email-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        this.logger.log(`[${operationId}] 🔄 Starting email send process - Type: ${emailData.type}`);
         try {
+            this.logger.log(`[${operationId}] 📧 Email config - Host: ${this.emailConfig.host}, Secure: false`);
+            this.logger.log(`[${operationId}] 👤 Auth user: ${this.emailConfig.user ? this.emailConfig.user : '❌ MISSING'}`);
+            this.logger.log(`[${operationId}] 🔑 Auth pass: ${this.emailConfig.pass ? this.emailConfig.pass : '❌ MISSING'}`);
+            this.logger.log(`[${operationId}] 📤 From: ${this.emailConfig.from || 'MISSING'}`);
+            this.logger.log(`[${operationId}] 📥 To: ${this.emailConfig.to || 'MISSING'}`);
+            const validationStart = Date.now();
             this.validateEmailData(emailData);
+            this.logger.debug(`[${operationId}] ✅ Validation completed in ${Date.now() - validationStart}ms`);
             if (!this.emailConfig.from || !this.emailConfig.to) {
                 throw new Error('Email configuration not properly initialized');
             }
+            const contentStart = Date.now();
             const { subject, html, attachments } = this.generateEmailContent(emailData);
+            this.logger.debug(`[${operationId}] 📝 Content generated in ${Date.now() - contentStart}ms`);
             const mailOptions = {
                 from: this.emailConfig.from,
                 to: this.emailConfig.to,
@@ -88,32 +103,78 @@ let EmailService = EmailService_1 = class EmailService {
                 html,
                 attachments: attachments || [],
             };
-            await this.verifyConnection();
+            this.logger.log(`[${operationId}] 📨 Sending email directly...`);
+            const sendStart = Date.now();
             const result = await this.transporter.sendMail(mailOptions);
-            this.logger.log(`Email sent successfully: ${result.messageId} - Type: ${emailData.type}`);
+            const sendTime = Date.now() - sendStart;
+            const totalTime = Date.now() - startTime;
+            this.logger.log(`[${operationId}] ✅ Email sent successfully!`);
+            this.logger.log(`[${operationId}] 📊 Performance: Send=${sendTime}ms, Total=${totalTime}ms`);
+            this.logger.log(`[${operationId}] 🆔 Message ID: ${result.messageId}`);
+            this.logger.log(`[${operationId}] 📧 Subject: ${subject}`);
             return true;
         }
         catch (error) {
+            const totalTime = Date.now() - startTime;
             const errorMessage = error instanceof Error ? error.message : String(error);
-            this.logger.error('Failed to send email:', errorMessage);
-            if (error && typeof error === 'object' && 'code' in error) {
-                this.logger.error(`Error code: ${error.code}`);
-            }
-            if (error && typeof error === 'object' && 'response' in error) {
-                this.logger.error(`SMTP response: ${error.response}`);
+            this.logger.error(`[${operationId}] ❌ Email send failed after ${totalTime}ms`);
+            this.logger.error(`[${operationId}] 💥 Error: ${errorMessage}`);
+            if (error && typeof error === 'object') {
+                const err = error;
+                if ('code' in err && err.code) {
+                    this.logger.error(`[${operationId}] 🔢 Error code: ${err.code}`);
+                }
+                if ('response' in err && err.response) {
+                    this.logger.error(`[${operationId}] 📡 SMTP response: ${err.response}`);
+                }
+                if ('command' in err && err.command) {
+                    this.logger.error(`[${operationId}] 💻 SMTP command: ${err.command}`);
+                }
+                if ('errno' in err && err.errno) {
+                    this.logger.error(`[${operationId}] 🔢 System errno: ${err.errno}`);
+                }
+                if ('syscall' in err && err.syscall) {
+                    this.logger.error(`[${operationId}] ⚙️ System call: ${err.syscall}`);
+                }
             }
             return false;
         }
     }
     async verifyConnection() {
+        const startTime = Date.now();
+        this.logger.debug('🔌 Starting SMTP connection verification...');
         try {
-            await this.transporter.verify();
-            this.logger.debug('SMTP connection verified successfully');
+            const verificationPromise = this.transporter.verify();
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('SMTP verification timeout after 10 seconds')), 10000));
+            const result = await Promise.race([verificationPromise, timeoutPromise]);
+            const verifyTime = Date.now() - startTime;
+            this.logger.debug(`✅ SMTP connection verified successfully in ${verifyTime}ms`);
+            this.logger.debug(`🔗 Connection result: ${JSON.stringify(result)}`);
         }
         catch (error) {
+            const verifyTime = Date.now() - startTime;
             const errorMessage = error instanceof Error ? error.message : String(error);
-            this.logger.error('SMTP connection verification failed:', errorMessage);
-            throw new Error(`SMTP connection failed: ${errorMessage}`);
+            this.logger.error(`❌ SMTP connection verification failed after ${verifyTime}ms`);
+            this.logger.error(`💥 Verification error: ${errorMessage}`);
+            if (error && typeof error === 'object') {
+                const err = error;
+                if ('code' in err && err.code) {
+                    this.logger.error(`🔢 Connection error code: ${err.code}`);
+                }
+                if ('errno' in err && err.errno) {
+                    this.logger.error(`🔢 System errno: ${err.errno}`);
+                }
+                if ('syscall' in err && err.syscall) {
+                    this.logger.error(`⚙️ System call: ${err.syscall}`);
+                }
+                if ('hostname' in err && err.hostname) {
+                    this.logger.error(`🌐 Hostname: ${err.hostname}`);
+                }
+                if ('port' in err && err.port) {
+                    this.logger.error(`🔌 Port: ${err.port}`);
+                }
+            }
+            this.logger.warn('⚠️ Continuing with email send despite verification failure...');
         }
     }
     validateEmailData(emailData) {

@@ -9,7 +9,7 @@ export declare class QuotesController {
     private readonly antiSpamService;
     private readonly logger;
     constructor(quotesService: QuotesService, emailService: EmailService, antiSpamService: AntiSpamService);
-    submitQuote(quoteDto: QuoteDto, req: Request): Promise<{
+    submitQuote(quoteDto: QuoteDto, req: Request, ip?: string): Promise<{
         success: boolean;
         message: string;
         data: {

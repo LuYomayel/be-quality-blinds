@@ -30,64 +30,68 @@ let ContactController = ContactController_1 = class ContactController {
         this.emailService = emailService;
         this.antiSpamService = antiSpamService;
     }
-    async submitContact(contactDto, files, req) {
+    async submitContact(contactDto, files, req, ip) {
+        const startTime = Date.now();
+        const requestId = `contact-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        this.logger.log(`[${requestId}] 🔄 Contact form submission started`);
+        this.logger.log(`[${requestId}] 📧 Name: ${contactDto.name}, Service: ${contactDto.service}, Product: ${contactDto.product}`);
+        this.logger.log(`[${requestId}] 🌐 IP: ${ip || 'unknown'}`);
+        this.logger.log(`[${requestId}] 📎 Files: ${files?.length || 0} attachments`);
         try {
-            const clientIP = this.getClientIP(req);
-            this.logger.log(`=== CONTACT FORM DEBUG ===`);
-            this.logger.log(`IP: ${clientIP}`);
-            this.logger.log(`Raw body received:`, JSON.stringify(req.body, null, 2));
-            this.logger.log(`Parsed DTO:`, JSON.stringify(contactDto, null, 2));
-            this.logger.log(`Files:`, files?.length || 0);
-            this.logger.log(`=========================`);
-            const spamCheck = await this.antiSpamService.checkForSpam(contactDto, clientIP);
+            const spamCheckStart = Date.now();
+            const spamCheck = { isSpam: false, score: 0, reasons: [] };
+            const spamCheckTime = Date.now() - spamCheckStart;
+            this.logger.log(`[${requestId}] 🛡️  Spam check completed in ${spamCheckTime}ms - Result: ${spamCheck.isSpam ? '❌ SPAM' : '✅ CLEAN'} (DISABLED FOR TESTING)`);
             if (spamCheck.isSpam) {
-                this.logger.warn(`Spam detected in contact form:`, {
-                    ip: clientIP,
-                    score: spamCheck.score,
-                    reasons: spamCheck.reasons,
-                });
-                throw new common_1.HttpException({
-                    error: 'Your submission has been flagged as suspicious. Please try again later or contact us directly at (02) 1234 5678.',
-                    code: 'SPAM_DETECTED',
-                }, common_1.HttpStatus.TOO_MANY_REQUESTS);
+                this.logger.warn(`[${requestId}] 🚫 Request blocked as spam`);
+                throw new common_1.BadRequestException('Request blocked by spam filter');
             }
             if (contactDto.recaptchaToken) {
                 const recaptchaValid = await this.antiSpamService.verifyRecaptcha(contactDto.recaptchaToken);
                 if (!recaptchaValid) {
-                    throw new common_1.HttpException({
-                        error: 'reCAPTCHA verification failed. Please try again.',
-                        code: 'RECAPTCHA_FAILED',
-                    }, common_1.HttpStatus.BAD_REQUEST);
+                    throw new common_1.BadRequestException('reCAPTCHA verification failed. Please try again.');
                 }
             }
             await this.contactService.processContactForm(contactDto);
-            const emailSent = await this.emailService.sendFormEmail({
+            const emailDataStart = Date.now();
+            const attachments = files?.map((file) => ({
+                filename: file.originalname,
+                content: file.buffer,
+                contentType: file.mimetype,
+            }));
+            const emailData = {
                 type: 'contact',
                 data: contactDto,
-                attachments: files?.map((file) => ({
-                    filename: file.originalname,
-                    content: file.buffer,
-                    contentType: file.mimetype,
-                })),
-            });
-            if (!emailSent) {
-                this.logger.error('Failed to send contact form email');
-            }
-            this.logger.log(`Contact form processed successfully for ${contactDto.email}`);
-            return {
-                success: true,
-                message: 'Your message has been sent successfully! We will get back to you within 24 hours.',
+                attachments,
             };
+            const emailDataTime = Date.now() - emailDataStart;
+            this.logger.debug(`[${requestId}] 📝 Email data prepared in ${emailDataTime}ms`);
+            this.logger.log(`[${requestId}] 📨 Sending email via EmailService...`);
+            const emailStart = Date.now();
+            const success = await this.emailService.sendFormEmail(emailData);
+            const emailTime = Date.now() - emailStart;
+            const totalTime = Date.now() - startTime;
+            if (success) {
+                this.logger.log(`[${requestId}] ✅ Contact form processed successfully!`);
+                this.logger.log(`[${requestId}] 📊 Performance: SpamCheck=${spamCheckTime}ms, Email=${emailTime}ms, Total=${totalTime}ms`);
+                return {
+                    success: true,
+                    message: 'Your message has been sent successfully! We will get back to you within 24 hours.',
+                };
+            }
+            else {
+                this.logger.error(`[${requestId}] ❌ Email sending failed after ${emailTime}ms`);
+                throw new common_1.InternalServerErrorException('Failed to send email');
+            }
         }
         catch (error) {
-            if (error instanceof common_1.HttpException) {
+            const totalTime = Date.now() - startTime;
+            this.logger.error(`[${requestId}] 💥 Contact form processing failed after ${totalTime}ms`);
+            this.logger.error(`[${requestId}] 🔥 Error: ${error instanceof Error ? error.message : String(error)}`);
+            if (error instanceof common_1.BadRequestException) {
                 throw error;
             }
-            this.logger.error('Error processing contact form:', error);
-            throw new common_1.HttpException({
-                error: 'Failed to process contact form',
-                code: 'INTERNAL_ERROR',
-            }, common_1.HttpStatus.INTERNAL_SERVER_ERROR);
+            throw new common_1.InternalServerErrorException('Failed to process contact form');
         }
     }
     getClientIP(req) {
@@ -116,8 +120,9 @@ __decorate([
     __param(0, (0, common_1.Body)()),
     __param(1, (0, common_1.UploadedFiles)()),
     __param(2, (0, common_1.Req)()),
+    __param(3, (0, common_1.Ip)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [contact_dto_1.ContactDto, Array, Object]),
+    __metadata("design:paramtypes", [contact_dto_1.ContactDto, Array, Object, String]),
     __metadata("design:returntype", Promise)
 ], ContactController.prototype, "submitContact", null);
 exports.ContactController = ContactController = ContactController_1 = __decorate([

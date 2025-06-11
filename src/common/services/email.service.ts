@@ -83,22 +83,40 @@ export class EmailService {
 
   private initializeConfig(): void {
     try {
+      // Debug environment variables
+      this.logger.log('🔍 Checking email environment variables...');
+      this.logger.log(
+        `EMAIL_HOST: ${this.configService.get<string>('EMAIL_HOST') || 'MISSING'}`,
+      );
+      this.logger.log(
+        `EMAIL_USER: ${this.configService.get<string>('EMAIL_USER') || 'MISSING'}`,
+      );
+      this.logger.log(
+        `EMAIL_PASS: ${this.configService.get<string>('EMAIL_PASS') || 'MISSING'}`,
+      );
+      this.logger.log(
+        `EMAIL_FROM: ${this.configService.get<string>('EMAIL_FROM') || 'MISSING'}`,
+      );
+      this.logger.log(
+        `EMAIL_TO: ${this.configService.get<string>('EMAIL_TO') || 'MISSING'}`,
+      );
+
       // Use exact same configuration as working backend
       this.emailConfig = {
-        host: this.configService.get<string>('EMAIL_SERVICE', 'smtp.gmail.com'),
+        host: this.configService.get<string>('EMAIL_HOST', 'smtp.gmail.com'),
         port: 587, // Will be ignored if not set explicitly in createTransport
         secure: false,
         user: this.configService.get<string>('EMAIL_USER'),
-        pass: this.configService.get<string>('EMAIL_PASS'), // Changed from EMAIL_PASS
+        pass: this.configService.get<string>('EMAIL_PASS'), // Keep original variable name
         from: this.configService.get<string>('EMAIL_FROM'),
         to: this.configService.get<string>('EMAIL_TO'),
       };
-      this.logger.log('Using Gmail configuration like working backend');
+      this.logger.log('Using Gmail configuration matching PM2 variables');
 
       // Validate required configuration
       if (!this.emailConfig.user || !this.emailConfig.pass) {
         throw new Error(
-          'Email credentials (EMAIL_USER, EMAIL_PASSWORD) are required',
+          'Email credentials (EMAIL_USER, EMAIL_PASS) are required',
         );
       }
 

@@ -13,7 +13,7 @@ export declare class ContactController {
     private readonly antiSpamService;
     private readonly logger;
     constructor(contactService: ContactService, emailService: EmailService, antiSpamService: AntiSpamService);
-    submitContact(contactDto: ContactDto, files: Express.Multer.File[], req: Request): Promise<ContactRequest>;
+    submitContact(contactDto: ContactDto, files: Express.Multer.File[], req: Request, ip?: string): Promise<ContactRequest>;
     private getClientIP;
 }
 export {};
