@@ -35,6 +35,7 @@ interface QuoteData {
   preferredTime?: string;
   comments?: string;
   wantsNewsletter?: boolean;
+  chatSummary?: string;
 }
 
 interface SamplesData {
@@ -230,27 +231,32 @@ export class EmailService {
       );
       this.logger.error(`[${operationId}] 💥 Error: ${errorMessage}`);
 
-      // Log detailed Resend error information
-      if (error && typeof error === 'object') {
+      // Log detailed error information with proper type checking
+      if (error && typeof error === 'object' && error !== null) {
         this.logger.error(
           `[${operationId}] 🔍 Error details:`,
           JSON.stringify(error, null, 2),
         );
 
-        // Check for specific Resend API errors
-        if ('response' in error && error.response) {
+        // Check for specific error properties with proper type guards
+        const errorObj = error as Record<string, unknown>;
+
+        if ('response' in errorObj && errorObj.response) {
           this.logger.error(
             `[${operationId}] 🌐 HTTP Response:`,
-            error.response,
+            errorObj.response,
           );
         }
 
-        if ('status' in error && error.status) {
-          this.logger.error(`[${operationId}] 📊 HTTP Status:`, error.status);
+        if ('status' in errorObj && errorObj.status) {
+          this.logger.error(
+            `[${operationId}] 📊 HTTP Status:`,
+            errorObj.status,
+          );
         }
 
-        if ('name' in error && error.name) {
-          this.logger.error(`[${operationId}] 🏷️ Error Name:`, error.name);
+        if ('name' in errorObj && errorObj.name) {
+          this.logger.error(`[${operationId}] 🏷️ Error Name:`, errorObj.name);
         }
       }
 
@@ -284,13 +290,14 @@ export class EmailService {
     }
 
     const commonFields = ['name', 'email', 'phone'];
-    const data = emailData.data as any;
+    const data = emailData.data as unknown as Record<string, unknown>;
 
     for (const field of commonFields) {
+      const fieldValue = data[field];
       if (
-        !data[field] ||
-        typeof data[field] !== 'string' ||
-        data[field].trim().length === 0
+        !fieldValue ||
+        typeof fieldValue !== 'string' ||
+        fieldValue.trim().length === 0
       ) {
         throw new Error(`Missing or invalid required field: ${field}`);
       }
@@ -298,23 +305,22 @@ export class EmailService {
 
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(data.email)) {
+    const email = data.email;
+    if (typeof email === 'string' && !emailRegex.test(email)) {
       throw new Error('Invalid email format');
     }
 
     // Type-specific validation
     switch (emailData.type) {
       case 'contact':
-        this.validateContactData(data as ContactData);
+        this.validateContactData(emailData.data as unknown as ContactData);
         break;
       case 'quote':
-        this.validateQuoteData(data as QuoteData);
+        this.validateQuoteData(emailData.data as unknown as QuoteData);
         break;
       case 'samples':
-        this.validateSamplesData(data as SamplesData);
+        this.validateSamplesData(emailData.data as unknown as SamplesData);
         break;
-      default:
-        throw new Error(`Unknown email type: ${emailData.type}`);
     }
   }
 
@@ -392,8 +398,6 @@ export class EmailService {
           emailData.data as SamplesData,
           timestamp,
         );
-      default:
-        throw new Error(`Unknown email type: ${emailData.type}`);
     }
   }
 
@@ -515,6 +519,17 @@ export class EmailService {
             <h2 style="color: #047857; margin-top: 30px;">Additional Comments</h2>
             <div style="background: #f0fdf4; padding: 20px; border-radius: 8px; border-left: 4px solid #10b981;">
               ${this.escapeHtml(data.comments).replace(/\n/g, '<br>')}
+            </div>
+          `
+              : ''
+          }
+
+          ${
+            data.chatSummary
+              ? `
+            <h2 style="color: #047857; margin-top: 30px;">Chatbot Conversation Summary</h2>
+            <div style="background: #f0f9ff; padding: 20px; border-radius: 8px; border-left: 4px solid #0ea5e9;">
+              ${this.escapeHtml(data.chatSummary).replace(/\n/g, '<br>')}
             </div>
           `
               : ''
@@ -729,16 +744,19 @@ export class EmailService {
   }
 
   // Health check method
-  async healthCheck(): Promise<{ status: string; message: string }> {
+  healthCheck(): Promise<{ status: string; message: string }> {
     try {
-      return { status: 'healthy', message: 'Email service is operational' };
+      return Promise.resolve({
+        status: 'healthy',
+        message: 'Email service is operational',
+      });
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      return {
+      return Promise.resolve({
         status: 'unhealthy',
         message: `Email service error: ${errorMessage}`,
-      };
+      });
     }
   }
 }

@@ -7,8 +7,6 @@ import {
   UploadedFiles,
   UseInterceptors,
   Req,
-  HttpException,
-  HttpStatus,
   Logger,
   BadRequestException,
   InternalServerErrorException,
@@ -42,7 +40,6 @@ export class ContactController {
   async submitContact(
     @Body() contactDto: ContactDto,
     @UploadedFiles() files: Express.Multer.File[],
-    @Req() req: Request,
     @Ip() ip?: string,
   ): Promise<ContactRequest> {
     const startTime = Date.now();

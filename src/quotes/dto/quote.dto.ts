@@ -60,12 +60,10 @@ export class QuoteDto extends BaseContactDto {
 
   @IsOptional()
   @IsNumberString()
-  @Transform(({ value }: { value: string }) => value?.trim() || '')
   width?: string;
 
   @IsOptional()
   @IsNumberString()
-  @Transform(({ value }: { value: string }) => value?.trim() || '')
   height?: string;
 
   @IsString()
@@ -141,4 +139,10 @@ export class QuoteDto extends BaseContactDto {
   @Length(0, 100)
   @Transform(({ value }: { value: string }) => value?.trim() || '')
   productCategory?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 5000)
+  @Transform(({ value }: { value: string }) => value?.trim() || '')
+  chatSummary?: string;
 }

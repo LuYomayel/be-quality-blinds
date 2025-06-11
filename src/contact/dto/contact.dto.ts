@@ -49,14 +49,22 @@ export class ContactDto extends BaseContactDto {
 
   @IsOptional()
   @IsString()
-  @Length(3, 100)
-  @Transform(({ value }: { value: string }) => value?.trim() || '')
+  @Length(3, 100, {
+    message: 'Address must be between 3 and 100 characters when provided',
+  })
+  @Transform(({ value }: { value: string }) => {
+    const trimmed = value?.trim() || '';
+    return trimmed === '' ? undefined : trimmed;
+  })
   address?: string;
 
   @IsOptional()
   @IsString()
-  @Length(4, 4)
-  @Transform(({ value }: { value: string }) => value?.trim() || '')
+  @Length(4, 4, { message: 'Postcode must be exactly 4 digits when provided' })
+  @Transform(({ value }: { value: string }) => {
+    const trimmed = value?.trim() || '';
+    return trimmed === '' ? undefined : trimmed;
+  })
   postcode?: string;
 }
 
