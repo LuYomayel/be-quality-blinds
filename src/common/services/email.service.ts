@@ -1,8 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as nodemailer from 'nodemailer';
-import { Transporter } from 'nodemailer';
-import dns from 'dns';
+import { Resend } from 'resend';
+
 interface ContactData {
   name: string;
   email: string;
@@ -61,11 +60,6 @@ interface EmailData {
 }
 
 interface EmailConfig {
-  host: string;
-  port: number;
-  secure: boolean;
-  user: string | undefined;
-  pass: string | undefined;
   from: string | undefined;
   to: string | undefined;
 }
@@ -73,13 +67,12 @@ interface EmailConfig {
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
-  private transporter: Transporter;
+  private resend: Resend;
   private emailConfig: EmailConfig;
 
   constructor(private configService: ConfigService) {
-    dns.setDefaultResultOrder('ipv4first');
     this.initializeConfig();
-    this.initializeTransporter();
+    this.resend = new Resend(this.configService.get<string>('RESEND_API_KEY'));
   }
 
   private initializeConfig(): void {
@@ -87,13 +80,7 @@ export class EmailService {
       // Debug environment variables
       this.logger.log('🔍 Checking email environment variables...');
       this.logger.log(
-        `EMAIL_HOST: ${this.configService.get<string>('EMAIL_HOST') || 'MISSING'}`,
-      );
-      this.logger.log(
-        `EMAIL_USER: ${this.configService.get<string>('EMAIL_USER') || 'MISSING'}`,
-      );
-      this.logger.log(
-        `EMAIL_PASS: ${this.configService.get<string>('EMAIL_PASS') || 'MISSING'}`,
+        `RESEND_API_KEY: ${this.configService.get<string>('RESEND_API_KEY') ? 'SET' : 'MISSING'}`,
       );
       this.logger.log(
         `EMAIL_FROM: ${this.configService.get<string>('EMAIL_FROM') || 'MISSING'}`,
@@ -102,23 +89,16 @@ export class EmailService {
         `EMAIL_TO: ${this.configService.get<string>('EMAIL_TO') || 'MISSING'}`,
       );
 
-      // Use exact same configuration as working backend
+      // Simple configuration for Resend
       this.emailConfig = {
-        host: this.configService.get<string>('EMAIL_HOST', 'smtp.gmail.com'),
-        port: 587, // STARTTLS port (more compatible)
-        secure: false, // Use STARTTLS instead of direct SSL
-        user: this.configService.get<string>('EMAIL_USER'),
-        pass: this.configService.get<string>('EMAIL_PASS'), // Keep original variable name
         from: this.configService.get<string>('EMAIL_FROM'),
         to: this.configService.get<string>('EMAIL_TO'),
       };
-      this.logger.log('Using Gmail configuration matching PM2 variables');
+      this.logger.log('Using Resend email service');
 
       // Validate required configuration
-      if (!this.emailConfig.user || !this.emailConfig.pass) {
-        throw new Error(
-          'Email credentials (EMAIL_USER, EMAIL_PASS) are required',
-        );
+      if (!this.configService.get<string>('RESEND_API_KEY')) {
+        throw new Error('RESEND_API_KEY is required');
       }
 
       if (!this.emailConfig.from || !this.emailConfig.to) {
@@ -137,36 +117,6 @@ export class EmailService {
     }
   }
 
-  private initializeTransporter(): void {
-    try {
-      if (!this.emailConfig.user || !this.emailConfig.pass) {
-        throw new Error('Email configuration not properly initialized');
-      }
-
-      // Configuración exacta como el backend que funciona
-      this.transporter = nodemailer.createTransport({
-        host: this.emailConfig.host,
-        port: this.emailConfig.port,
-        secure: this.emailConfig.secure,
-
-        auth: {
-          user: this.emailConfig.user,
-          pass: this.emailConfig.pass,
-        },
-      });
-
-      this.logger.log('Email transporter initialized successfully');
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      this.logger.error(
-        'Failed to initialize email transporter:',
-        errorMessage,
-      );
-      throw error;
-    }
-  }
-
   async sendFormEmail(emailData: EmailData): Promise<boolean> {
     const startTime = Date.now();
     const operationId = `email-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -178,16 +128,7 @@ export class EmailService {
     try {
       // Log configuration status
       this.logger.log(
-        `[${operationId}] 📧 Email config - Host: ${this.emailConfig.host}, Secure: ${this.emailConfig.secure}, Port: ${this.emailConfig.port}`,
-      );
-      this.logger.log(
-        `[${operationId}] 👤 Auth user: ${this.emailConfig.user ? this.emailConfig.user : '❌ MISSING'}`,
-      );
-      this.logger.log(
-        `[${operationId}] 🔑 Auth pass: ${this.emailConfig.pass ? this.emailConfig.pass : '❌ MISSING'}`,
-      );
-      this.logger.log(
-        `[${operationId}] 📤 From: ${this.emailConfig.from || 'MISSING'}`,
+        `[${operationId}] 📧 Email config - From: ${this.emailConfig.from || 'MISSING'}`,
       );
       this.logger.log(
         `[${operationId}] 📥 To: ${this.emailConfig.to || 'MISSING'}`,
@@ -212,19 +153,20 @@ export class EmailService {
         `[${operationId}] 📝 Content generated in ${Date.now() - contentStart}ms`,
       );
 
-      const mailOptions = {
+      // Send email using Resend
+      this.logger.log(`[${operationId}] 📨 Sending email via Resend...`);
+      const sendStart = Date.now();
+
+      const result = await this.resend.emails.send({
         from: this.emailConfig.from,
         to: this.emailConfig.to,
         subject,
         html,
-        attachments: attachments || [],
-      };
-
-      // Send email directly without verification (like working backend)
-      this.logger.log(`[${operationId}] 📨 Sending email directly...`);
-      const sendStart = Date.now();
-
-      const result = await this.transporter.sendMail(mailOptions);
+        attachments: attachments?.map((att) => ({
+          filename: att.filename,
+          content: att.content,
+        })),
+      });
       const sendTime = Date.now() - sendStart;
       const totalTime = Date.now() - startTime;
 
@@ -232,7 +174,9 @@ export class EmailService {
       this.logger.log(
         `[${operationId}] 📊 Performance: Send=${sendTime}ms, Total=${totalTime}ms`,
       );
-      this.logger.log(`[${operationId}] 🆔 Message ID: ${result.messageId}`);
+      this.logger.log(
+        `[${operationId}] 🆔 Message ID: ${result.data?.id || 'N/A'}`,
+      );
       this.logger.log(`[${operationId}] 📧 Subject: ${subject}`);
 
       return true;
@@ -269,62 +213,6 @@ export class EmailService {
       }
 
       return false;
-    }
-  }
-
-  private async verifyConnection(): Promise<void> {
-    const startTime = Date.now();
-    this.logger.debug('🔌 Starting SMTP connection verification...');
-
-    try {
-      // Crear una promesa con timeout
-      const verificationPromise = this.transporter.verify();
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(
-          () => reject(new Error('SMTP verification timeout after 10 seconds')),
-          10000,
-        ),
-      );
-
-      const result = await Promise.race([verificationPromise, timeoutPromise]);
-      const verifyTime = Date.now() - startTime;
-      this.logger.debug(
-        `✅ SMTP connection verified successfully in ${verifyTime}ms`,
-      );
-      this.logger.debug(`🔗 Connection result: ${JSON.stringify(result)}`);
-    } catch (error) {
-      const verifyTime = Date.now() - startTime;
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      this.logger.error(
-        `❌ SMTP connection verification failed after ${verifyTime}ms`,
-      );
-      this.logger.error(`💥 Verification error: ${errorMessage}`);
-
-      // Enhanced error logging for connection issues
-      if (error && typeof error === 'object') {
-        const err = error;
-        if ('code' in err && err.code) {
-          this.logger.error(`🔢 Connection error code: ${err.code}`);
-        }
-        if ('errno' in err && err.errno) {
-          this.logger.error(`🔢 System errno: ${err.errno}`);
-        }
-        if ('syscall' in err && err.syscall) {
-          this.logger.error(`⚙️ System call: ${err.syscall}`);
-        }
-        if ('hostname' in err && err.hostname) {
-          this.logger.error(`🌐 Hostname: ${err.hostname}`);
-        }
-        if ('port' in err && err.port) {
-          this.logger.error(`🔌 Port: ${err.port}`);
-        }
-      }
-
-      // No fallar completamente - continuar con el envío
-      this.logger.warn(
-        '⚠️ Continuing with email send despite verification failure...',
-      );
     }
   }
 
@@ -781,7 +669,6 @@ export class EmailService {
   // Health check method
   async healthCheck(): Promise<{ status: string; message: string }> {
     try {
-      await this.verifyConnection();
       return { status: 'healthy', message: 'Email service is operational' };
     } catch (error) {
       const errorMessage =
