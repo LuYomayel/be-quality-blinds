@@ -212,7 +212,17 @@ export class EmailService {
       // Send email
       this.logger.log(`[${operationId}] 📨 Sending email...`);
       const sendStart = Date.now();
-      const result = await this.transporter.sendMail(mailOptions);
+
+      // Crear promesa con timeout para el envío
+      const sendEmailPromise = this.transporter.sendMail(mailOptions);
+      const sendTimeoutPromise = new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error('Email send timeout after 30 seconds')),
+          30000,
+        ),
+      );
+
+      const result = await Promise.race([sendEmailPromise, sendTimeoutPromise]);
       const sendTime = Date.now() - sendStart;
       const totalTime = Date.now() - startTime;
 
@@ -265,7 +275,16 @@ export class EmailService {
     this.logger.debug('🔌 Starting SMTP connection verification...');
 
     try {
-      const result = await this.transporter.verify();
+      // Crear una promesa con timeout
+      const verificationPromise = this.transporter.verify();
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error('SMTP verification timeout after 10 seconds')),
+          10000,
+        ),
+      );
+
+      const result = await Promise.race([verificationPromise, timeoutPromise]);
       const verifyTime = Date.now() - startTime;
       this.logger.debug(
         `✅ SMTP connection verified successfully in ${verifyTime}ms`,
@@ -300,7 +319,10 @@ export class EmailService {
         }
       }
 
-      throw error;
+      // No fallar completamente - continuar con el envío
+      this.logger.warn(
+        '⚠️ Continuing with email send despite verification failure...',
+      );
     }
   }
 
