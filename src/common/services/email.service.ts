@@ -104,9 +104,8 @@ export class EmailService {
       // Use exact same configuration as working backend
       this.emailConfig = {
         host: this.configService.get<string>('EMAIL_HOST', 'smtp.gmail.com'),
-        port: 465, // <-- SSL port
-        secure: true, // SSL from the start
-
+        port: 587, // STARTTLS port (more compatible)
+        secure: false, // Use STARTTLS instead of direct SSL
         user: this.configService.get<string>('EMAIL_USER'),
         pass: this.configService.get<string>('EMAIL_PASS'), // Keep original variable name
         from: this.configService.get<string>('EMAIL_FROM'),
@@ -223,8 +222,6 @@ export class EmailService {
       // Send email directly without verification (like working backend)
       this.logger.log(`[${operationId}] 📨 Sending email directly...`);
       const sendStart = Date.now();
-
-      await this.verifyConnection();
 
       const result = await this.transporter.sendMail(mailOptions);
       const sendTime = Date.now() - sendStart;
