@@ -91,8 +91,10 @@ export class EmailService {
 
       // Simple configuration for Resend
       this.emailConfig = {
-        from: this.configService.get<string>('EMAIL_FROM'),
-        to: this.configService.get<string>('EMAIL_TO'),
+        //from: this.configService.get<string>('EMAIL_FROM'),
+        from: 'Quality Blinds <info@qualityblinds.com.au>',
+        //to: this.configService.get<string>('EMAIL_TO'),
+        to: 'l.yomayel@gmail.com',
       };
       this.logger.log('Using Resend email service');
 
