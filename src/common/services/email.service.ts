@@ -122,16 +122,13 @@ export class EmailService {
         throw new Error('Email configuration not properly initialized');
       }
 
+      // Configuración simplificada como el backend que funciona
       this.transporter = nodemailer.createTransport({
         host: this.emailConfig.host,
-        port: this.emailConfig.port,
-        secure: this.emailConfig.secure,
+        secure: false, // Use STARTTLS instead of direct SSL
         auth: {
           user: this.emailConfig.user,
           pass: this.emailConfig.pass,
-        },
-        tls: {
-          rejectUnauthorized: false,
         },
       });
 
@@ -158,7 +155,7 @@ export class EmailService {
     try {
       // Log configuration status
       this.logger.log(
-        `[${operationId}] 📧 Email config - Host: ${this.emailConfig.host}:${this.emailConfig.port}, Secure: ${this.emailConfig.secure}`,
+        `[${operationId}] 📧 Email config - Host: ${this.emailConfig.host}, Secure: false`,
       );
       this.logger.log(
         `[${operationId}] 👤 Auth user: ${this.emailConfig.user ? this.emailConfig.user : '❌ MISSING'}`,
@@ -200,36 +197,16 @@ export class EmailService {
         attachments: attachments || [],
       };
 
-      // Verify transporter connection before sending
-      this.logger.log(`[${operationId}] 🔌 Testing SMTP connection...`);
-      const connectionStart = Date.now();
-      // Skip verification for now due to timeout issues
-      // await this.verifyConnection();
-      const connectionTime = Date.now() - connectionStart;
-      this.logger.log(
-        `[${operationId}] ⚠️ SMTP verification skipped - going directly to send`,
-      );
-
-      // Send email
-      this.logger.log(`[${operationId}] 📨 Sending email...`);
+      // Send email directly without verification (like working backend)
+      this.logger.log(`[${operationId}] 📨 Sending email directly...`);
       const sendStart = Date.now();
-
-      // Crear promesa con timeout para el envío
-      const sendEmailPromise = this.transporter.sendMail(mailOptions);
-      const sendTimeoutPromise = new Promise((_, reject) =>
-        setTimeout(
-          () => reject(new Error('Email send timeout after 15 seconds')),
-          15000,
-        ),
-      );
-
-      const result = await Promise.race([sendEmailPromise, sendTimeoutPromise]);
+      const result = await this.transporter.sendMail(mailOptions);
       const sendTime = Date.now() - sendStart;
       const totalTime = Date.now() - startTime;
 
       this.logger.log(`[${operationId}] ✅ Email sent successfully!`);
       this.logger.log(
-        `[${operationId}] 📊 Performance: Connection=${connectionTime}ms, Send=${sendTime}ms, Total=${totalTime}ms`,
+        `[${operationId}] 📊 Performance: Send=${sendTime}ms, Total=${totalTime}ms`,
       );
       this.logger.log(`[${operationId}] 🆔 Message ID: ${result.messageId}`);
       this.logger.log(`[${operationId}] 📧 Subject: ${subject}`);
