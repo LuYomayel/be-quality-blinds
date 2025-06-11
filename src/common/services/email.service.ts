@@ -85,8 +85,8 @@ export class EmailService {
     try {
       this.emailConfig = {
         host: this.configService.get<string>('EMAIL_HOST', 'smtp.gmail.com'),
-        port: this.configService.get<number>('EMAIL_PORT', 587),
-        secure: this.configService.get<boolean>('EMAIL_SECURE', false),
+        port: this.configService.get<number>('EMAIL_PORT', 465),
+        secure: this.configService.get<boolean>('EMAIL_SECURE', true),
         user: this.configService.get<string>('EMAIL_USER'),
         pass: this.configService.get<string>('EMAIL_PASS'),
         from: this.configService.get<string>('EMAIL_FROM'),
@@ -161,10 +161,10 @@ export class EmailService {
         `[${operationId}] 📧 Email config - Host: ${this.emailConfig.host}:${this.emailConfig.port}, Secure: ${this.emailConfig.secure}`,
       );
       this.logger.log(
-        `[${operationId}] 👤 Auth user: ${this.emailConfig.user ? '✅ SET' : '❌ MISSING'}`,
+        `[${operationId}] 👤 Auth user: ${this.emailConfig.user ? this.emailConfig.user : '❌ MISSING'}`,
       );
       this.logger.log(
-        `[${operationId}] 🔑 Auth pass: ${this.emailConfig.pass ? '✅ SET' : '❌ MISSING'}`,
+        `[${operationId}] 🔑 Auth pass: ${this.emailConfig.pass ? this.emailConfig.pass : '❌ MISSING'}`,
       );
       this.logger.log(
         `[${operationId}] 📤 From: ${this.emailConfig.from || 'MISSING'}`,
@@ -203,10 +203,11 @@ export class EmailService {
       // Verify transporter connection before sending
       this.logger.log(`[${operationId}] 🔌 Testing SMTP connection...`);
       const connectionStart = Date.now();
-      await this.verifyConnection();
+      // Skip verification for now due to timeout issues
+      // await this.verifyConnection();
       const connectionTime = Date.now() - connectionStart;
       this.logger.log(
-        `[${operationId}] ✅ SMTP connection verified in ${connectionTime}ms`,
+        `[${operationId}] ⚠️ SMTP verification skipped - going directly to send`,
       );
 
       // Send email
@@ -217,8 +218,8 @@ export class EmailService {
       const sendEmailPromise = this.transporter.sendMail(mailOptions);
       const sendTimeoutPromise = new Promise((_, reject) =>
         setTimeout(
-          () => reject(new Error('Email send timeout after 30 seconds')),
-          30000,
+          () => reject(new Error('Email send timeout after 15 seconds')),
+          15000,
         ),
       );
 
