@@ -178,7 +178,7 @@ export class EmailService {
     try {
       // Log configuration status
       this.logger.log(
-        `[${operationId}] 📧 Email config - Host: ${this.emailConfig.host}, Secure: false`,
+        `[${operationId}] 📧 Email config - Host: ${this.emailConfig.host}, Secure: ${this.emailConfig.secure}, Port: ${this.emailConfig.port}`,
       );
       this.logger.log(
         `[${operationId}] 👤 Auth user: ${this.emailConfig.user ? this.emailConfig.user : '❌ MISSING'}`,
