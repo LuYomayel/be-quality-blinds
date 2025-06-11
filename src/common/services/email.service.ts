@@ -104,8 +104,8 @@ export class EmailService {
       // Use exact same configuration as working backend
       this.emailConfig = {
         host: this.configService.get<string>('EMAIL_HOST', 'smtp.gmail.com'),
-        port: 587, // Will be ignored if not set explicitly in createTransport
-        secure: false,
+        port: 465, // <-- SSL port
+        secure: true, // SSL from the start
         user: this.configService.get<string>('EMAIL_USER'),
         pass: this.configService.get<string>('EMAIL_PASS'), // Keep original variable name
         from: this.configService.get<string>('EMAIL_FROM'),
@@ -145,8 +145,8 @@ export class EmailService {
       // Configuración exacta como el backend que funciona
       this.transporter = nodemailer.createTransport({
         host: this.emailConfig.host,
-        // port: 587,  // Commented out like working backend
-        secure: false, // Use STARTTLS instead of direct SSL
+        port: this.emailConfig.port,
+        secure: this.emailConfig.secure,
         auth: {
           user: this.emailConfig.user,
           pass: this.emailConfig.pass,
@@ -221,6 +221,7 @@ export class EmailService {
       // Send email directly without verification (like working backend)
       this.logger.log(`[${operationId}] 📨 Sending email directly...`);
       const sendStart = Date.now();
+      await this.verifyConnection();
       const result = await this.transporter.sendMail(mailOptions);
       const sendTime = Date.now() - sendStart;
       const totalTime = Date.now() - startTime;
