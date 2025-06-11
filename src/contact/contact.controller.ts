@@ -10,6 +10,9 @@ import {
   HttpException,
   HttpStatus,
   Logger,
+  BadRequestException,
+  InternalServerErrorException,
+  Ip,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { Request } from 'express';
@@ -40,39 +43,35 @@ export class ContactController {
     @Body() contactDto: ContactDto,
     @UploadedFiles() files: Express.Multer.File[],
     @Req() req: Request,
+    @Ip() ip?: string,
   ): Promise<ContactRequest> {
+    const startTime = Date.now();
+    const requestId = `contact-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    this.logger.log(`[${requestId}] 🔄 Contact form submission started`);
+    this.logger.log(
+      `[${requestId}] 📧 Name: ${contactDto.name}, Service: ${contactDto.service}, Product: ${contactDto.product}`,
+    );
+    this.logger.log(`[${requestId}] 🌐 IP: ${ip || 'unknown'}`);
+    this.logger.log(
+      `[${requestId}] 📎 Files: ${files?.length || 0} attachments`,
+    );
+
     try {
-      const clientIP = this.getClientIP(req);
-
-      // Logging detallado para debug
-      this.logger.log(`=== CONTACT FORM DEBUG ===`);
-      this.logger.log(`IP: ${clientIP}`);
-      this.logger.log(`Raw body received:`, JSON.stringify(req.body, null, 2));
-      this.logger.log(`Parsed DTO:`, JSON.stringify(contactDto, null, 2));
-      this.logger.log(`Files:`, files?.length || 0);
-      this.logger.log(`=========================`);
-
-      // Verificar spam y rate limiting
+      // Anti-spam check
+      const spamCheckStart = Date.now();
       const spamCheck = await this.antiSpamService.checkForSpam(
         contactDto,
-        clientIP,
+        ip || 'unknown',
+      );
+      const spamCheckTime = Date.now() - spamCheckStart;
+      this.logger.log(
+        `[${requestId}] 🛡️  Spam check completed in ${spamCheckTime}ms - Result: ${spamCheck.isSpam ? '❌ SPAM' : '✅ CLEAN'}`,
       );
 
       if (spamCheck.isSpam) {
-        this.logger.warn(`Spam detected in contact form:`, {
-          ip: clientIP,
-          score: spamCheck.score,
-          reasons: spamCheck.reasons,
-        });
-
-        throw new HttpException(
-          {
-            error:
-              'Your submission has been flagged as suspicious. Please try again later or contact us directly at (02) 1234 5678.',
-            code: 'SPAM_DETECTED',
-          },
-          HttpStatus.TOO_MANY_REQUESTS,
-        );
+        this.logger.warn(`[${requestId}] 🚫 Request blocked as spam`);
+        throw new BadRequestException('Request blocked by spam filter');
       }
 
       // Verificar reCAPTCHA si está presente
@@ -81,12 +80,8 @@ export class ContactController {
           contactDto.recaptchaToken,
         );
         if (!recaptchaValid) {
-          throw new HttpException(
-            {
-              error: 'reCAPTCHA verification failed. Please try again.',
-              code: 'RECAPTCHA_FAILED',
-            },
-            HttpStatus.BAD_REQUEST,
+          throw new BadRequestException(
+            'reCAPTCHA verification failed. Please try again.',
           );
         }
       }
@@ -94,44 +89,62 @@ export class ContactController {
       // Procesar el formulario de contacto
       await this.contactService.processContactForm(contactDto);
 
-      // Enviar email con archivos adjuntos
-      const emailSent = await this.emailService.sendFormEmail({
-        type: 'contact',
+      // Prepare email data
+      const emailDataStart = Date.now();
+      const attachments = files?.map((file) => ({
+        filename: file.originalname,
+        content: file.buffer,
+        contentType: file.mimetype,
+      }));
+
+      const emailData = {
+        type: 'contact' as const,
         data: contactDto,
-        attachments: files?.map((file) => ({
-          filename: file.originalname,
-          content: file.buffer,
-          contentType: file.mimetype,
-        })),
-      });
-
-      if (!emailSent) {
-        this.logger.error('Failed to send contact form email');
-        // No fallar la request por error de email, pero logear
-      }
-
-      this.logger.log(
-        `Contact form processed successfully for ${contactDto.email}`,
+        attachments,
+      };
+      const emailDataTime = Date.now() - emailDataStart;
+      this.logger.debug(
+        `[${requestId}] 📝 Email data prepared in ${emailDataTime}ms`,
       );
 
-      return {
-        success: true,
-        message:
-          'Your message has been sent successfully! We will get back to you within 24 hours.',
-      };
+      // Send email
+      this.logger.log(`[${requestId}] 📨 Sending email via EmailService...`);
+      const emailStart = Date.now();
+      const success = await this.emailService.sendFormEmail(emailData);
+      const emailTime = Date.now() - emailStart;
+      const totalTime = Date.now() - startTime;
+
+      if (success) {
+        this.logger.log(
+          `[${requestId}] ✅ Contact form processed successfully!`,
+        );
+        this.logger.log(
+          `[${requestId}] 📊 Performance: SpamCheck=${spamCheckTime}ms, Email=${emailTime}ms, Total=${totalTime}ms`,
+        );
+        return {
+          success: true,
+          message:
+            'Your message has been sent successfully! We will get back to you within 24 hours.',
+        };
+      } else {
+        this.logger.error(
+          `[${requestId}] ❌ Email sending failed after ${emailTime}ms`,
+        );
+        throw new InternalServerErrorException('Failed to send email');
+      }
     } catch (error) {
-      if (error instanceof HttpException) {
+      const totalTime = Date.now() - startTime;
+      this.logger.error(
+        `[${requestId}] 💥 Contact form processing failed after ${totalTime}ms`,
+      );
+      this.logger.error(
+        `[${requestId}] 🔥 Error: ${error instanceof Error ? error.message : String(error)}`,
+      );
+
+      if (error instanceof BadRequestException) {
         throw error;
       }
-
-      this.logger.error('Error processing contact form:', error);
-      throw new HttpException(
-        {
-          error: 'Failed to process contact form',
-          code: 'INTERNAL_ERROR',
-        },
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw new InternalServerErrorException('Failed to process contact form');
     }
   }
 
