@@ -83,20 +83,22 @@ export class EmailService {
 
   private initializeConfig(): void {
     try {
+      // Use exact same configuration as working backend
       this.emailConfig = {
-        host: this.configService.get<string>('EMAIL_HOST', 'smtp.gmail.com'),
-        port: this.configService.get<number>('EMAIL_PORT', 465),
-        secure: this.configService.get<boolean>('EMAIL_SECURE', true),
+        host: this.configService.get<string>('EMAIL_SERVICE', 'smtp.gmail.com'),
+        port: 587, // Will be ignored if not set explicitly in createTransport
+        secure: false,
         user: this.configService.get<string>('EMAIL_USER'),
-        pass: this.configService.get<string>('EMAIL_PASS'),
+        pass: this.configService.get<string>('EMAIL_PASSWORD'), // Changed from EMAIL_PASS
         from: this.configService.get<string>('EMAIL_FROM'),
         to: this.configService.get<string>('EMAIL_TO'),
       };
+      this.logger.log('Using Gmail configuration like working backend');
 
       // Validate required configuration
       if (!this.emailConfig.user || !this.emailConfig.pass) {
         throw new Error(
-          'Email credentials (EMAIL_USER, EMAIL_PASS) are required',
+          'Email credentials (EMAIL_USER, EMAIL_PASSWORD) are required',
         );
       }
 
@@ -122,9 +124,10 @@ export class EmailService {
         throw new Error('Email configuration not properly initialized');
       }
 
-      // Configuración simplificada como el backend que funciona
+      // Configuración exacta como el backend que funciona
       this.transporter = nodemailer.createTransport({
         host: this.emailConfig.host,
+        // port: 587,  // Commented out like working backend
         secure: false, // Use STARTTLS instead of direct SSL
         auth: {
           user: this.emailConfig.user,
