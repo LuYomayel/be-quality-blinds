@@ -30,12 +30,12 @@ export class QuoteDto extends BaseContactDto {
   @Transform(({ value }: { value: string }) => value?.trim() || '')
   postcode: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @IsIn(['NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT'], {
     message: 'State must be a valid Australian state',
   })
-  state: string;
+  state?: string;
 
   @IsString()
   @IsNotEmpty()

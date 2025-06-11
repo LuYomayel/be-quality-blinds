@@ -21,7 +21,7 @@ interface QuoteData {
   phone: string;
   address: string;
   city: string;
-  state: string;
+  state?: string;
   postcode: string;
   product: string;
   roomType: string;
@@ -73,7 +73,19 @@ export class EmailService {
 
   constructor(private configService: ConfigService) {
     this.initializeConfig();
-    this.resend = new Resend(this.configService.get<string>('RESEND_API_KEY'));
+
+    const apiKey = this.configService.get<string>('RESEND_API_KEY');
+    this.logger.log(
+      `🔧 Initializing Resend with API key: ${apiKey ? `${apiKey.substring(0, 8)}...` : 'MISSING'}`,
+    );
+
+    try {
+      this.resend = new Resend(apiKey);
+      this.logger.log('✅ Resend instance created successfully');
+    } catch (error) {
+      this.logger.error('❌ Failed to create Resend instance:', error);
+      throw error;
+    }
   }
 
   private initializeConfig(): void {
@@ -158,9 +170,16 @@ export class EmailService {
 
       // Send email using Resend
       this.logger.log(`[${operationId}] 📨 Sending email via Resend...`);
+      this.logger.log(`[${operationId}] 📧 From: ${this.emailConfig.from}`);
+      this.logger.log(`[${operationId}] 📥 To: ${this.emailConfig.to}`);
+      this.logger.log(`[${operationId}] 📝 Subject: ${subject}`);
+      this.logger.log(
+        `[${operationId}] 📎 Attachments: ${attachments?.length || 0}`,
+      );
+
       const sendStart = Date.now();
 
-      const result = await this.resend.emails.send({
+      const emailPayload = {
         from: this.emailConfig.from,
         to: this.emailConfig.to,
         subject,
@@ -169,7 +188,14 @@ export class EmailService {
           filename: att.filename,
           content: att.content,
         })),
-      });
+      };
+
+      this.logger.log(
+        `[${operationId}] 🚀 Calling Resend API with payload keys: ${Object.keys(emailPayload).join(', ')}`,
+      );
+
+      const result = await this.resend.emails.send(emailPayload);
+
       const sendTime = Date.now() - sendStart;
       const totalTime = Date.now() - startTime;
 
@@ -178,9 +204,20 @@ export class EmailService {
         `[${operationId}] 📊 Performance: Send=${sendTime}ms, Total=${totalTime}ms`,
       );
       this.logger.log(
-        `[${operationId}] 🆔 Message ID: ${result.data?.id || 'N/A'}`,
+        `[${operationId}] 🆔 Resend Response:`,
+        JSON.stringify(result, null, 2),
       );
-      this.logger.log(`[${operationId}] 📧 Subject: ${subject}`);
+
+      if (result.data?.id) {
+        this.logger.log(`[${operationId}] 📧 Message ID: ${result.data.id}`);
+      }
+
+      if (result.error) {
+        this.logger.warn(
+          `[${operationId}] ⚠️ Resend returned error in response:`,
+          result.error,
+        );
+      }
 
       return true;
     } catch (error) {
@@ -193,26 +230,48 @@ export class EmailService {
       );
       this.logger.error(`[${operationId}] 💥 Error: ${errorMessage}`);
 
-      // Log additional error details for debugging
+      // Log detailed Resend error information
       if (error && typeof error === 'object') {
-        const err = error;
-        if ('code' in err && err.code) {
-          this.logger.error(`[${operationId}] 🔢 Error code: ${err.code}`);
-        }
-        if ('response' in err && err.response) {
+        this.logger.error(
+          `[${operationId}] 🔍 Error details:`,
+          JSON.stringify(error, null, 2),
+        );
+
+        // Check for specific Resend API errors
+        if ('response' in error && error.response) {
           this.logger.error(
-            `[${operationId}] 📡 SMTP response: ${err.response}`,
+            `[${operationId}] 🌐 HTTP Response:`,
+            error.response,
           );
         }
-        if ('command' in err && err.command) {
-          this.logger.error(`[${operationId}] 💻 SMTP command: ${err.command}`);
+
+        if ('status' in error && error.status) {
+          this.logger.error(`[${operationId}] 📊 HTTP Status:`, error.status);
         }
-        if ('errno' in err && err.errno) {
-          this.logger.error(`[${operationId}] 🔢 System errno: ${err.errno}`);
+
+        if ('name' in error && error.name) {
+          this.logger.error(`[${operationId}] 🏷️ Error Name:`, error.name);
         }
-        if ('syscall' in err && err.syscall) {
-          this.logger.error(`[${operationId}] ⚙️ System call: ${err.syscall}`);
-        }
+      }
+
+      // Check if it's a network/connectivity issue
+      if (
+        errorMessage.includes('ENOTFOUND') ||
+        errorMessage.includes('ECONNREFUSED')
+      ) {
+        this.logger.error(
+          `[${operationId}] 🌐 Network connectivity issue detected`,
+        );
+      }
+
+      // Check if it's an authentication issue
+      if (
+        errorMessage.includes('401') ||
+        errorMessage.includes('authentication')
+      ) {
+        this.logger.error(
+          `[${operationId}] 🔐 Authentication issue - check RESEND_API_KEY`,
+        );
       }
 
       return false;
@@ -428,7 +487,7 @@ export class EmailService {
           <table style="width: 100%; border-collapse: collapse;">
             <tr><td style="padding: 8px 0; border-bottom: 1px solid #e5e7eb;"><strong>Address:</strong></td><td style="padding: 8px 0; border-bottom: 1px solid #e5e7eb;">${this.escapeHtml(data.address)}</td></tr>
             <tr><td style="padding: 8px 0; border-bottom: 1px solid #e5e7eb;"><strong>City:</strong></td><td style="padding: 8px 0; border-bottom: 1px solid #e5e7eb;">${this.escapeHtml(data.city)}</td></tr>
-            <tr><td style="padding: 8px 0; border-bottom: 1px solid #e5e7eb;"><strong>State:</strong></td><td style="padding: 8px 0; border-bottom: 1px solid #e5e7eb;">${this.escapeHtml(data.state)}</td></tr>
+            <tr><td style="padding: 8px 0; border-bottom: 1px solid #e5e7eb;"><strong>State:</strong></td><td style="padding: 8px 0; border-bottom: 1px solid #e5e7eb;">${this.escapeHtml(data.state || 'Not specified')}</td></tr>
             <tr><td style="padding: 8px 0; border-bottom: 1px solid #e5e7eb;"><strong>Postcode:</strong></td><td style="padding: 8px 0; border-bottom: 1px solid #e5e7eb;">${this.escapeHtml(data.postcode)}</td></tr>
           </table>
 
