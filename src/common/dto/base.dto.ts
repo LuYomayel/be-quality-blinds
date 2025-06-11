@@ -29,8 +29,8 @@ export class BaseContactDto {
   @IsString()
   @IsNotEmpty()
   @Transform(({ value }: { value: string }) => value?.trim() || '')
-  @Matches(/^(\+?61|0)[2-9]\d{8}$|^(\+?61|0)4\d{8}$/, {
-    message: 'Please provide a valid Australian phone number',
+  @Matches(/^(\+?61|0)?[2-9]\d{8}$|^(\+?61|0)?4\d{8}$|^[+\d\s\-()]{8,20}$/, {
+    message: 'Please provide a valid phone number',
   })
   phone: string;
 
@@ -49,10 +49,10 @@ export class BaseAddressDto {
 
   @IsOptional()
   @IsString()
-  @Length(4, 4)
+  @Length(3, 10)
   @Transform(({ value }: { value: string }) => value?.trim() || '')
-  @Matches(/^\d{4}$/, {
-    message: 'Postcode must be exactly 4 digits',
+  @Matches(/^[A-Za-z0-9\s-]{3,10}$/, {
+    message: 'Please provide a valid postcode',
   })
   postcode?: string;
 

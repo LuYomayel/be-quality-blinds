@@ -33,7 +33,12 @@ let ContactController = ContactController_1 = class ContactController {
     async submitContact(contactDto, files, req) {
         try {
             const clientIP = this.getClientIP(req);
-            this.logger.log(`Contact form submission from IP: ${clientIP}`);
+            this.logger.log(`=== CONTACT FORM DEBUG ===`);
+            this.logger.log(`IP: ${clientIP}`);
+            this.logger.log(`Raw body received:`, JSON.stringify(req.body, null, 2));
+            this.logger.log(`Parsed DTO:`, JSON.stringify(contactDto, null, 2));
+            this.logger.log(`Files:`, files?.length || 0);
+            this.logger.log(`=========================`);
             const spamCheck = await this.antiSpamService.checkForSpam(contactDto, clientIP);
             if (spamCheck.isSpam) {
                 this.logger.warn(`Spam detected in contact form:`, {
