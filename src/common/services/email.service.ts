@@ -89,7 +89,7 @@ export class EmailService {
         port: 587, // Will be ignored if not set explicitly in createTransport
         secure: false,
         user: this.configService.get<string>('EMAIL_USER'),
-        pass: this.configService.get<string>('EMAIL_PASSWORD'), // Changed from EMAIL_PASS
+        pass: this.configService.get<string>('EMAIL_PASS'), // Changed from EMAIL_PASS
         from: this.configService.get<string>('EMAIL_FROM'),
         to: this.configService.get<string>('EMAIL_TO'),
       };
