@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 import { Transporter } from 'nodemailer';
-
+import dns from 'dns';
 interface ContactData {
   name: string;
   email: string;
@@ -77,6 +77,7 @@ export class EmailService {
   private emailConfig: EmailConfig;
 
   constructor(private configService: ConfigService) {
+    dns.setDefaultResultOrder('ipv4first');
     this.initializeConfig();
     this.initializeTransporter();
   }
