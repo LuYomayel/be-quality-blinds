@@ -46,6 +46,18 @@ export class ContactDto extends BaseContactDto {
   @Length(0, 2000)
   @Transform(({ value }: { value: string }) => value?.trim() || '')
   chatSummary?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(3, 100)
+  @Transform(({ value }: { value: string }) => value?.trim() || '')
+  address?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(4, 4)
+  @Transform(({ value }: { value: string }) => value?.trim() || '')
+  postcode?: string;
 }
 
 export class ContactAddressDto extends BaseAddressDto {}
