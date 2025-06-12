@@ -53,8 +53,8 @@ Agrega a tu `.env`:
 
 ```bash
 # Google Places API (fallback)
-GOOGLE_PLACES_API_KEY="AIzaSyCkMWfgVyAj08RhJFkOOsUxx9lxeZp32RA"
-GOOGLE_PLACE_ID="ChIJkW1-3CCyEmsRorld0CsHYIY"
+GOOGLE_PLACES_API_KEY="YOUR_GOOGLE_PLACES_API_KEY_HERE"
+GOOGLE_PLACE_ID="YOUR_PLACE_ID_HERE"
 
 # Google My Business API (más reviews)
 GOOGLE_CREDENTIALS_PATH="./google-credentials.json"
@@ -76,8 +76,8 @@ GOOGLE_CREDENTIALS_PATH="./google-credentials.json"
 Variables de entorno mínimas:
 
 ```bash
-GOOGLE_PLACES_API_KEY="AIzaSyCkMWfgVyAj08RhJFkOOsUxx9lxeZp32RA"
-GOOGLE_PLACE_ID="ChIJkW1-3CCyEmsRorld0CsHYIY"
+GOOGLE_PLACES_API_KEY="YOUR_GOOGLE_PLACES_API_KEY_HERE"
+GOOGLE_PLACE_ID=""
 ```
 
 **Limitaciones:**
@@ -152,7 +152,7 @@ curl http://localhost:3001/api/reviews/google
   "place_id": "ChIJkW1-3CCyEmsRorld0CsHYIY",
   "rating": 4.5,
   "total_reviews": 69,
-  "api_key": "AIzaSyCkMWfgVyAj08RhJFkOOsUxx9lxeZp32RA"
+  "api_key": "YOUR_GOOGLE_PLACES_API_KEY_HERE"
 }
 ```
 
