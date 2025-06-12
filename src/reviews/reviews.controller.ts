@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Body, Query } from '@nestjs/common';
 import { ReviewsService, GoogleReview, UserReview } from './reviews.service';
+import { GoogleReviewsService } from './google-reviews.service';
 
 interface SubmitReviewRequest {
   productId: string;
@@ -13,7 +14,10 @@ interface SubmitReviewRequest {
 
 @Controller('api/reviews')
 export class ReviewsController {
-  constructor(private readonly reviewsService: ReviewsService) {}
+  constructor(
+    private readonly reviewsService: ReviewsService,
+    private readonly googleReviewsService: GoogleReviewsService,
+  ) {}
 
   @Get('google')
   async getGoogleReviews(): Promise<{
@@ -21,6 +25,15 @@ export class ReviewsController {
     data: { rating: number; totalReviews: number; reviews: GoogleReview[] };
   }> {
     return this.reviewsService.getGoogleReviews();
+  }
+
+  @Get('google/test')
+  async testGoogleConnection(): Promise<{
+    success: boolean;
+    message: string;
+    data?: any;
+  }> {
+    return this.googleReviewsService.testConnection();
   }
 
   @Get('user')

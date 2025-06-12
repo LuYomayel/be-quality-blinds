@@ -153,4 +153,8 @@ coverage/
 # TernJS port file
 .tern-port 
 
+# Google Cloud credentials
+google-credentials.json
+*.json
+
 dist/

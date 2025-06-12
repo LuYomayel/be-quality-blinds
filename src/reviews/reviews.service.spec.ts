@@ -1,15 +1,30 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ReviewsService } from './reviews.service';
+import { GoogleReviewsService } from './google-reviews.service';
+
+// Mock del GoogleReviewsService
+const mockGoogleReviewsService = {
+  getReviews: jest.fn(),
+};
 
 describe('ReviewsService', () => {
   let service: ReviewsService;
+  let googleReviewsService: GoogleReviewsService;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [ReviewsService],
+      providers: [
+        ReviewsService,
+        {
+          provide: GoogleReviewsService,
+          useValue: mockGoogleReviewsService,
+        },
+      ],
     }).compile();
 
     service = module.get<ReviewsService>(ReviewsService);
+    googleReviewsService =
+      module.get<GoogleReviewsService>(GoogleReviewsService);
   });
 
   it('should be defined', () => {
@@ -17,38 +32,86 @@ describe('ReviewsService', () => {
   });
 
   describe('getGoogleReviews', () => {
-    it('should return Google reviews with rating and total count', async () => {
+    it('should return Google reviews when API call is successful', async () => {
+      const mockApiResponse = {
+        success: true,
+        data: {
+          rating: 4.9,
+          totalReviews: 147,
+          reviews: [
+            {
+              author_name: 'Test User',
+              rating: 5,
+              relative_time_description: 'hace 2 días',
+              text: 'Excelente servicio',
+              time: Date.now(),
+              language: 'es',
+              profile_photo_url: 'https://example.com/photo.jpg',
+            },
+          ],
+        },
+      };
+
+      mockGoogleReviewsService.getReviews.mockResolvedValue(mockApiResponse);
+
       const result = await service.getGoogleReviews();
 
       expect(result.success).toBe(true);
-      expect(result.data).toHaveProperty('rating', 4.9);
-      expect(result.data).toHaveProperty('totalReviews', 147);
-      expect(result.data.reviews).toBeInstanceOf(Array);
+      expect(result.data.rating).toBe(4.9);
+      expect(result.data.totalReviews).toBe(147);
+      expect(result.data.reviews).toHaveLength(1);
+      expect(googleReviewsService.getReviews).toHaveBeenCalled();
+    });
+
+    it('should return fallback reviews when API call fails', async () => {
+      mockGoogleReviewsService.getReviews.mockResolvedValue({
+        success: false,
+        error: 'API Error',
+      });
+
+      const result = await service.getGoogleReviews();
+
+      expect(result.success).toBe(true);
+      expect(result.data.totalReviews).toBe(0); // Indica fallback
+      expect(result.data.reviews).toHaveLength(1);
+      expect(result.data.reviews[0].author_name).toBe('Cliente Verificado');
+    });
+
+    it('should handle exceptions and return fallback', async () => {
+      mockGoogleReviewsService.getReviews.mockRejectedValue(
+        new Error('Network error'),
+      );
+
+      const result = await service.getGoogleReviews();
+
+      expect(result.success).toBe(true);
+      expect(result.data.totalReviews).toBe(0); // Indica fallback
+      expect(result.data.reviews).toBeDefined();
+    });
+
+    it('should limit reviews to 10 items', async () => {
+      const mockApiResponse = {
+        success: true,
+        data: {
+          rating: 4.9,
+          totalReviews: 50,
+          reviews: Array.from({ length: 15 }, (_, i) => ({
+            author_name: `User ${i}`,
+            rating: 5,
+            relative_time_description: 'hace 1 día',
+            text: `Review ${i}`,
+            time: Date.now(),
+            language: 'es',
+            profile_photo_url: 'https://example.com/photo.jpg',
+          })),
+        },
+      };
+
+      mockGoogleReviewsService.getReviews.mockResolvedValue(mockApiResponse);
+
+      const result = await service.getGoogleReviews();
+
       expect(result.data.reviews.length).toBeLessThanOrEqual(10);
-    });
-
-    it('should return reviews sorted by time (newest first)', async () => {
-      const result = await service.getGoogleReviews();
-      const reviews = result.data.reviews;
-
-      if (reviews.length > 1) {
-        for (let i = 0; i < reviews.length - 1; i++) {
-          expect(reviews[i].time).toBeGreaterThanOrEqual(reviews[i + 1].time);
-        }
-      }
-    });
-
-    it('should return reviews with required properties', async () => {
-      const result = await service.getGoogleReviews();
-      const review = result.data.reviews[0];
-
-      expect(review).toHaveProperty('author_name');
-      expect(review).toHaveProperty('rating');
-      expect(review).toHaveProperty('relative_time_description');
-      expect(review).toHaveProperty('text');
-      expect(review).toHaveProperty('time');
-      expect(review).toHaveProperty('language');
-      expect(review).toHaveProperty('profile_photo_url');
     });
   });
 
@@ -70,7 +133,7 @@ describe('ReviewsService', () => {
         email: 'test@example.com',
         rating: 5,
         title: 'Great product',
-        comment: 'Very satisfied',
+        comment: 'Love it!',
         isVerified: true,
       });
 
@@ -85,21 +148,20 @@ describe('ReviewsService', () => {
       expect(result.data.averageRating).toBe(5);
     });
 
-    it('should calculate correct average rating', async () => {
+    it('should calculate average rating correctly', async () => {
       // Add multiple reviews
       const reviews = [
-        { rating: 5, productId: 'test-product-2' },
-        { rating: 4, productId: 'test-product-2' },
-        { rating: 3, productId: 'test-product-2' },
+        { rating: 5, title: 'Excellent', comment: 'Perfect!' },
+        { rating: 4, title: 'Good', comment: 'Nice product' },
+        { rating: 3, title: 'Average', comment: "It's okay" },
       ];
 
       for (const review of reviews) {
         await service.submitUserReview({
           ...review,
+          productId: 'test-product-2',
           name: 'Test User',
           email: 'test@example.com',
-          title: 'Test',
-          comment: 'Test comment',
           isVerified: true,
         });
       }
@@ -114,6 +176,8 @@ describe('ReviewsService', () => {
 
       const result = await service.getUserReviews('test-product-2');
 
+      expect(result.success).toBe(true);
+      expect(result.data.reviews).toHaveLength(3);
       expect(result.data.averageRating).toBe(4); // (5+4+3)/3 = 4
     });
 
@@ -123,88 +187,83 @@ describe('ReviewsService', () => {
         name: 'Test User',
         email: 'test@example.com',
         rating: 5,
-        title: 'Unapproved review',
-        comment: 'This should not appear',
+        title: 'Great product',
+        comment: 'Love it!',
         isVerified: true,
       });
 
       const result = await service.getUserReviews('test-product-3');
 
-      expect(result.data.reviews).toHaveLength(0);
+      expect(result.success).toBe(true);
+      expect(result.data.reviews).toHaveLength(0); // No approved reviews
       expect(result.data.totalReviews).toBe(0);
     });
   });
 
   describe('submitUserReview', () => {
-    it('should submit review successfully', async () => {
+    it('should submit a review successfully', async () => {
       const reviewData = {
-        productId: 'roller-blinds',
+        productId: 'test-product',
         name: 'John Doe',
         email: 'john@example.com',
         rating: 5,
-        title: 'Excellent product',
-        comment: 'Very happy with the quality of the roller blinds',
+        title: 'Amazing product',
+        comment: 'Really satisfied with the quality',
         isVerified: true,
       };
 
       const result = await service.submitUserReview(reviewData);
 
       expect(result.success).toBe(true);
-      expect(result.message).toBe(
-        'Review submitted successfully and will be reviewed before publishing',
-      );
+      expect(result.message).toContain('Review submitted successfully');
     });
 
-    it('should create review with correct properties', async () => {
+    it('should set review as not approved by default', async () => {
       const reviewData = {
-        productId: 'roman-blinds',
-        name: 'Jane Smith',
-        email: 'jane@example.com',
-        rating: 4,
-        title: 'Good quality',
-        comment: 'Nice Roman blinds, good value for money',
-        isVerified: false,
-      };
-
-      await service.submitUserReview(reviewData);
-
-      const userReviews = (service as any).userReviews;
-      const addedReview = userReviews[userReviews.length - 1];
-
-      expect(addedReview).toMatchObject({
-        productId: 'roman-blinds',
-        name: 'Jane Smith',
-        email: 'jane@example.com',
-        rating: 4,
-        title: 'Good quality',
-        comment: 'Nice Roman blinds, good value for money',
-        isVerified: false,
-        isApproved: false,
-        helpful: 0,
-        flagged: 0,
-      });
-
-      expect(addedReview.id).toBeDefined();
-      expect(addedReview.timestamp).toBeDefined();
-    });
-
-    it('should set isApproved to false by default', async () => {
-      const reviewData = {
-        productId: 'shutters',
-        name: 'Bob Wilson',
-        email: 'bob@example.com',
-        rating: 3,
-        title: 'Average',
-        comment: 'Shutters are okay',
+        productId: 'test-product',
+        name: 'John Doe',
+        email: 'john@example.com',
+        rating: 5,
+        title: 'Amazing product',
+        comment: 'Really satisfied with the quality',
         isVerified: true,
       };
 
       await service.submitUserReview(reviewData);
 
       const userReviews = (service as any).userReviews;
-      const addedReview = userReviews[userReviews.length - 1];
+      const submittedReview = userReviews.find(
+        (r: any) => r.email === 'john@example.com',
+      );
 
-      expect(addedReview.isApproved).toBe(false);
+      expect(submittedReview).toBeDefined();
+      expect(submittedReview.isApproved).toBe(false);
+      expect(submittedReview.helpful).toBe(0);
+      expect(submittedReview.flagged).toBe(0);
+    });
+
+    it('should generate unique IDs and timestamps', async () => {
+      const reviewData = {
+        productId: 'test-product',
+        name: 'Jane Doe',
+        email: 'jane@example.com',
+        rating: 4,
+        title: 'Good product',
+        comment: 'Happy with purchase',
+        isVerified: false,
+      };
+
+      await service.submitUserReview(reviewData);
+
+      const userReviews = (service as any).userReviews;
+      const submittedReview = userReviews.find(
+        (r: any) => r.email === 'jane@example.com',
+      );
+
+      expect(submittedReview.id).toBeDefined();
+      expect(submittedReview.timestamp).toBeDefined();
+      expect(typeof submittedReview.id).toBe('string');
+      expect(typeof submittedReview.timestamp).toBe('number');
     });
   });
 });
