@@ -1,46 +1,65 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import helmet from 'helmet';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, Logger } from '@nestjs/common';
+import { SecurityService } from './common/security/security.service';
+import { ConfigService } from '@nestjs/config';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const logger = new Logger('Bootstrap');
 
-  // Security middleware
-  app.use(
-    helmet({
-      crossOriginEmbedderPolicy: false,
-    }),
-  );
+  const app = await NestFactory.create(AppModule, {
+    logger: ['error', 'warn', 'log', 'debug', 'verbose'],
+  });
 
-  // Global validation pipe
+  // Obtener servicios de seguridad
+  const securityService = app.get(SecurityService);
+  const configService = app.get(ConfigService);
+
+  // Configurar Helmet con configuración de seguridad
+  app.use(helmet(securityService.getHelmetConfig()));
+
+  // Global validation pipe con configuración estricta
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,
       whitelist: true,
       forbidNonWhitelisted: true,
+      disableErrorMessages: configService.get('NODE_ENV') === 'production',
+      validateCustomDecorators: true,
     }),
   );
 
-  // Enable CORS
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-  app.enableCors({
-    origin: [
-      frontendUrl,
-      'https://www.qualityblinds.com.au',
-      'http://localhost:3000',
-      frontendUrl, // Add it again to ensure it's included
-    ],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true,
+  // Configurar CORS con SecurityService
+  app.enableCors(securityService.getCorsConfig());
+
+  // Configurar límites de request
+  app.use((req: any, res: any, next: any) => {
+    // Límite de tamaño de JSON
+    if (req.headers['content-type']?.includes('application/json')) {
+      const contentLength = parseInt(req.headers['content-length'] || '0', 10);
+      if (contentLength > 1024 * 1024) {
+        // 1MB para JSON
+        return res.status(413).json({ error: 'Request too large' });
+      }
+    }
+    next();
   });
 
-  const port = process.env.PORT || 3001;
-  console.log(`Backend running on port ${port}`);
-  console.log(
-    `CORS enabled for origins: ${frontendUrl}, https://www.qualityblinds.com.au, http://localhost:3000, ${frontendUrl}`,
-  );
+  const port = configService.get('PORT') || 3001;
+  const nodeEnv = configService.get('NODE_ENV') || 'development';
+
+  logger.log(`🚀 Quality Blinds Backend starting...`);
+  logger.log(`🔧 Environment: ${nodeEnv}`);
+  logger.log(`🌐 Port: ${port}`);
+  logger.log(`🔒 Security: ENABLED`);
+  logger.log(`🛡️ CORS: Configured with SecurityService`);
+  logger.log(`⚡ Rate Limiting: ACTIVE`);
+
   await app.listen(port);
+
+  logger.log(`✅ Quality Blinds Backend is running on port ${port}`);
+  logger.log(`📱 Frontend URL: https://qualityblinds.netlify.app`);
+  logger.log(`🔐 Security measures: ACTIVE`);
 }
 bootstrap();
